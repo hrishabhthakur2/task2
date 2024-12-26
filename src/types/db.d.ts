@@ -1,16 +1,16 @@
-interface User {
+export interface User {
   name: string
   email: string
   image: string
   id: string
 }
 
-interface Chat {
+export interface Chat {
   id: string
   messages: Message[]
 }
 
-interface Message {
+export interface Message {
   id: string
   senderId: string
   receiverId: string
@@ -18,8 +18,16 @@ interface Message {
   timestamp: number
 }
 
-interface FriendRequest {
+export interface FriendRequest {
   id: string
   senderId: string
   receiverId: string
+}
+
+// You can also create a namespace to group these types
+export namespace DB {
+  export type UserType = User
+  export type ChatType = Chat
+  export type MessageType = Message
+  export type FriendRequestType = FriendRequest
 }

@@ -5,11 +5,21 @@ import { pusherServer } from '@/lib/pusher'
 import { toPusherKey } from '@/lib/utils'
 import { Message, messageValidator } from '@/lib/validations/message'
 import { nanoid } from 'nanoid'
-import { getServerSession } from 'next-auth'
+import { getServerSession } from 'next-auth/next'
+import { User } from 'next-auth'
 
 export async function POST(req: Request) {
   try {
+    if (!req.body) {
+      return new Response('Missing request body', { status: 400 })
+    }
+
     const { text, chatId }: { text: string; chatId: string } = await req.json()
+    
+    if (!text || !chatId) {
+      return new Response('Missing required fields', { status: 400 })
+    }
+
     const session = await getServerSession(authOptions)
 
     if (!session) return new Response('Unauthorized', { status: 401 })
@@ -26,6 +36,7 @@ export async function POST(req: Request) {
       'smembers',
       `user:${session.user.id}:friends`
     )) as string[]
+
     const isFriend = friendList.includes(friendId)
 
     if (!isFriend) {
@@ -36,8 +47,8 @@ export async function POST(req: Request) {
       'get',
       `user:${session.user.id}`
     )) as string
-    const sender = JSON.parse(rawSender) as User
 
+    const sender = JSON.parse(rawSender) as User
     const timestamp = Date.now()
 
     const messageData: Message = {
@@ -49,27 +60,38 @@ export async function POST(req: Request) {
 
     const message = messageValidator.parse(messageData)
 
-    // notify all connected chat room clients
-    await pusherServer.trigger(toPusherKey(`chat:${chatId}`), 'incoming-message', message)
+    try {
+      await pusherServer.trigger(
+        toPusherKey(`chat:${chatId}`),
+        'incoming-message',
+        message
+      )
 
-    await pusherServer.trigger(toPusherKey(`user:${friendId}:chats`), 'new_message', {
-      ...message,
-      senderImg: sender.image,
-      senderName: sender.name
-    })
+      await pusherServer.trigger(
+        toPusherKey(`user:${friendId}:chats`),
+        'new_message',
+        {
+          ...message,
+          senderImg: sender.image,
+          senderName: sender.name
+        }
+      )
 
-    // all valid, send the message
-    await db.zadd(`chat:${chatId}:messages`, {
-      score: timestamp,
-      member: JSON.stringify(message),
-    })
+      await db.zadd(`chat:${chatId}:messages`, {
+        score: timestamp,
+        member: JSON.stringify(message),
+      })
 
-    return new Response('OK')
+      return new Response('OK')
+    } catch (error) {
+      console.error('Error in message operations:', error)
+      return new Response('Error processing message', { status: 500 })
+    }
   } catch (error) {
+    console.error('Route error:', error)
     if (error instanceof Error) {
       return new Response(error.message, { status: 500 })
     }
-
     return new Response('Internal Server Error', { status: 500 })
   }
 }
